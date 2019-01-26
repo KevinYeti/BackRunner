@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>六只眼</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/scores.css') }}">
+
+</head>
+<body>
+<div class="sky">
+    <h1>六只<br/>眼</h1>
+    <div class="box">
+        <div class="boxTxt">
+
+        </div>
+    </div>
+</div>
+{#<audio loop="loop">#}
+{#    <source src="D:/CODING/music/01 Main Title and te Attack on t /">#}
+{##}
+{#    <audio>#}
+
+<script src="{{ url_for('static', filename='js/jquery.min.js') }}"></script>
+<script>
+    function getScores() {
+        function sortScore(a, b) {
+            return b[1] - a[1]
+        }
+
+        jQuery('.boxTxt').empty()
+        let ret = []
+
+        jQuery.ajax({
+            url: "{{ url_for('api.scores_api') }}",
+            method: 'GET',
+
+        }).done(function (records) {
+            records.records.sort(sortScore)
+            for (let record of records.records) {
+                jQuery('.boxTxt').append('<p>' + record[0] + ':&emsp;&emsp;' + record[1] + '</p>')
+            }
+
+        })
+
+
+    }
+
+    jQuery(function () {
+        getScores()
+
+        setInterval(function () {
+            getScores()
+        }, 10 * 1000)
+    })
+
+</script>
+</body>
+</html>
