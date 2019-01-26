@@ -27,6 +27,10 @@ function Runner( outerContainerId, opt_config ) {
   this.distanceMeter = null;
   this.distanceRan = 0;
 
+  //
+  this.dir = true;
+  
+
   this.highestScore = 0;
 
   this.time = 0;
@@ -73,7 +77,7 @@ var DEFAULT_WIDTH = 600;
 var FPS = 60;
 
 /** @const */
-var IS_HIDPI = window.devicePixelRatio > 1;
+var IS_HIDPI = window.devicePixelRatio > 1;   //获得是否为高分辨率
 
 /** @const */
 var IS_IOS = window.navigator.userAgent.indexOf( 'CriOS' ) > -1 ||
@@ -104,11 +108,11 @@ Runner.config = {
   MAX_CLOUDS: 6,
   MAX_OBSTACLE_LENGTH: 3,
   MAX_OBSTACLE_DUPLICATION: 2,
-  MAX_SPEED: 13,
-  MIN_JUMP_HEIGHT: 35,
+  MAX_SPEED: 13,            //最大速度
+  MIN_JUMP_HEIGHT: 35,      //最小跳起高度
   MOBILE_SPEED_COEFFICIENT: 1.2,
   RESOURCE_TEMPLATE_ID: 'audio-resources',
-  SPEED: 6,
+  SPEED: 6,                 //起始速度
   SPEED_DROP_COEFFICIENT: 3
 };
 
@@ -253,24 +257,25 @@ Runner.prototype = {
    * Load and decode base 64 encoded sounds.
    */
   loadSounds: function () {
-    if ( !IS_IOS && window.AudioContext) {
-      this.audioContext = new AudioContext();
+    //既然不搞声音,自然不用加载
+    // if ( !IS_IOS && window.AudioContext) {
+    //   this.audioContext = new AudioContext();
 
-      var resourceTemplate =
-        document.getElementById( this.config.RESOURCE_TEMPLATE_ID ).content;
+    //   var resourceTemplate =
+    //     document.getElementById( this.config.RESOURCE_TEMPLATE_ID ).content;
 
-      for ( var sound in Runner.sounds ) {
-        var soundSrc =
-          resourceTemplate.getElementById( Runner.sounds[ sound ] ).src;
-        soundSrc = soundSrc.substr( soundSrc.indexOf( ',' ) + 1 );
-        var buffer = decodeBase64ToArrayBuffer( soundSrc );
+    //   for ( var sound in Runner.sounds ) {
+    //     var soundSrc =
+    //       resourceTemplate.getElementById( Runner.sounds[ sound ] ).src;
+    //     soundSrc = soundSrc.substr( soundSrc.indexOf( ',' ) + 1 );
+    //     var buffer = decodeBase64ToArrayBuffer( soundSrc );
 
-        // Async, so no guarantee of order in array.
-        this.audioContext.decodeAudioData( buffer, function ( index, audioData ) {
-          this.soundFx[ index ] = audioData;
-        }.bind( this, sound ) );
-      }
-    }
+    //     // Async, so no guarantee of order in array.
+    //     this.audioContext.decodeAudioData( buffer, function ( index, audioData ) {
+    //       this.soundFx[ index ] = audioData;
+    //     }.bind( this, sound ) );
+    //   }
+    // }
   },
 
   /**
@@ -306,6 +311,9 @@ Runner.prototype = {
     // Player canvas container.
     this.canvas = createCanvas( this.containerEl, this.dimensions.WIDTH,
       this.dimensions.HEIGHT, Runner.classes.PLAYER );
+    
+    this.offset = this.canvas.width / 2;
+    
 
     this.canvasCtx = this.canvas.getContext( '2d' );
     this.canvasCtx.fillStyle = '#f7f7f7';
@@ -314,7 +322,7 @@ Runner.prototype = {
 
     // Horizon contains clouds, obstacles and the ground.
     this.horizon = new Horizon( this.canvas, this.spriteDef, this.dimensions,
-      this.config.GAP_COEFFICIENT );
+      this.config.GAP_COEFFICIENT, this.dir );
 
     // Distance meter
     this.distanceMeter = new DistanceMeter( this.canvas,
@@ -510,27 +518,28 @@ Runner.prototype = {
         this.playSound( this.soundFx.SCORE );
       }
 
-      // Night mode.
-      if ( this.invertTimer > this.config.INVERT_FADE_DURATION ) {
-        this.invertTimer = 0;
-        this.invertTrigger = false;
-        this.invert();
-      } else if ( this.invertTimer ) {
-        this.invertTimer += deltaTime;
-      } else {
-        var actualDistance =
-          this.distanceMeter.getActualDistance( Math.ceil( this.distanceRan ) );
+      //我们不搞夜晚模式
+      // // Night mode.
+      // if ( this.invertTimer > this.config.INVERT_FADE_DURATION ) {
+      //   this.invertTimer = 0;
+      //   this.invertTrigger = false;
+      //   this.invert();
+      // } else if ( this.invertTimer ) {
+      //   this.invertTimer += deltaTime;
+      // } else {
+      //   var actualDistance =
+      //     this.distanceMeter.getActualDistance( Math.ceil( this.distanceRan ) );
 
-        if ( actualDistance > 0 ) {
-          this.invertTrigger = !(actualDistance %
-          this.config.INVERT_DISTANCE);
+      //   if ( actualDistance > 0 ) {
+      //     this.invertTrigger = !(actualDistance %
+      //     this.config.INVERT_DISTANCE);
 
-          if ( this.invertTrigger && this.invertTimer === 0 ) {
-            this.invertTimer += deltaTime;
-            this.invert();
-          }
-        }
-      }
+      //     if ( this.invertTrigger && this.invertTimer === 0 ) {
+      //       this.invertTimer += deltaTime;
+      //       this.invert();
+      //     }
+      //   }
+      // }
     }
 
     if ( !this.crashed ) {
@@ -632,10 +641,27 @@ Runner.prototype = {
         this.tRex.setSpeedDrop();
       } else if ( !this.tRex.jumping && !this.tRex.ducking ) {
         // Duck.
-        this.tRex.setDuck( true );
+        //this.tRex.setDuck( true );
+        
+        //
+        this.setDir(false);
+
       }
     }
   },
+
+  setDir: function( d ) {
+    this.dir = d;
+    this.horizon.dir = d;
+    this.horizon.horizonLine.dir = d;
+    this.horizon.clouds.forEach(cloud => {
+      cloud.dir = d;
+    });
+    this.horizon.obstacles.forEach(obstacle => {
+      obstacle.dir = d;
+    });
+  },
+
 
   /**
    * Process key up.
@@ -784,12 +810,13 @@ Runner.prototype = {
    * @param {SoundBuffer} soundBuffer
    */
   playSound: function ( soundBuffer ) {
-    if ( soundBuffer ) {
-      var sourceNode = this.audioContext.createBufferSource();
-      sourceNode.buffer = soundBuffer;
-      sourceNode.connect( this.audioContext.destination );
-      sourceNode.start( 0 );
-    }
+    //我们不播放声音
+    // if ( soundBuffer ) {
+    //   var sourceNode = this.audioContext.createBufferSource();
+    //   sourceNode.buffer = soundBuffer;
+    //   sourceNode.connect( this.audioContext.destination );
+    //   sourceNode.start( 0 );
+    // }
   },
 
   /**
@@ -1116,8 +1143,8 @@ function boxCompare( tRexBox, obstacleBox ) {
   var obstacleBoxY = obstacleBox.y;
 
   // Axis-Aligned Bounding Box method.
-  if ( tRexBox.x < obstacleBoxX + obstacleBox.width &&
-    tRexBox.x + tRexBox.width > obstacleBoxX &&
+  if ( (tRexBox.x + 200) < obstacleBoxX + obstacleBox.width &&
+    (tRexBox.x + 200) + tRexBox.width > obstacleBoxX &&
     tRexBox.y < obstacleBox.y + obstacleBox.height &&
     tRexBox.height + tRexBox.y > obstacleBox.y ) {
     crashed = true;
@@ -1152,12 +1179,13 @@ function CollisionBox( x, y, w, h ) {
  * @param {Object} dimensions
  * @param {number} gapCoefficient Mutipler in determining the gap.
  * @param {number} speed
+ * @param {bool} d
  * @param {number} opt_xOffset
  */
 function Obstacle( canvasCtx, type, spriteImgPos, dimensions,
-  gapCoefficient, speed, opt_xOffset )
+  gapCoefficient, speed, d, opt_xOffset )
 {
-
+  this.dir = d;
   this.canvasCtx = canvasCtx;
   this.spritePos = spriteImgPos;
   this.typeConfig = type;
@@ -1278,7 +1306,13 @@ Obstacle.prototype = {
       if ( this.typeConfig.speedOffset ) {
         speed += this.speedOffset;
       }
-      this.xPos -= Math.floor( (speed * FPS / 1000) * deltaTime );
+      if(this.dir) {
+        this.xPos -= Math.floor( (speed * FPS / 1000) * deltaTime );
+      }
+      else {
+        this.xPos += Math.floor( (speed * FPS / 1000) * deltaTime );
+      }
+      
 
       // Update frame
       if ( this.typeConfig.numFrames ) {
@@ -1317,7 +1351,7 @@ Obstacle.prototype = {
    * @return {boolean} Whether the obstacle is in the game area.
    */
   isVisible: function () {
-    return this.xPos + this.width > 0;
+    return (this.xPos + this.width > 0) ;
   },
 
   /**
@@ -1404,7 +1438,7 @@ function Trex( canvas, spritePos ) {
   this.canvas = canvas;
   this.canvasCtx = canvas.getContext( '2d' );
   this.spritePos = spritePos;
-  this.xPos = 0;
+  this.xPos = 100;                //横向x位置
   this.yPos = 0;
   // Position when on the ground.
   this.groundYPos = 0;
@@ -1607,23 +1641,25 @@ Trex.prototype = {
     sourceX += this.spritePos.x;
     sourceY += this.spritePos.y;
 
-    // Ducking.
-    if ( this.ducking && this.status != Trex.status.CRASHED ) {
-      this.canvasCtx.drawImage( Runner.imageSprite, sourceX, sourceY,
-        sourceWidth, sourceHeight,
-        this.xPos, this.yPos,
-        this.config.WIDTH_DUCK, this.config.HEIGHT );
-    } else {
-      // Crashed whilst ducking. Trex is standing up so needs adjustment.
-      if ( this.ducking && this.status == Trex.status.CRASHED ) {
-        this.xPos++;
-      }
+    //没有鸭子模式
+    // // Ducking.
+    // if ( this.ducking && this.status != Trex.status.CRASHED ) {
+    //   this.canvasCtx.drawImage( Runner.imageSprite, sourceX, sourceY,
+    //     sourceWidth, sourceHeight,
+    //     this.xPos, this.yPos,
+    //     this.config.WIDTH_DUCK, this.config.HEIGHT );
+    // } else {
+    //   // Crashed whilst ducking. Trex is standing up so needs adjustment.
+    //   if ( this.ducking && this.status == Trex.status.CRASHED ) {
+    //     this.xPos++;
+    //   }
       // Standing / running
       this.canvasCtx.drawImage( Runner.imageSprite, sourceX, sourceY,
         sourceWidth, sourceHeight,
-        this.xPos, this.yPos,
+        this.xPos + 200, this.yPos,
         this.config.WIDTH, this.config.HEIGHT );
-    }
+        
+    //}
   },
 
   /**
@@ -2015,7 +2051,8 @@ DistanceMeter.prototype = {
  * @param {Object} spritePos Position of image in sprite.
  * @param {number} containerWidth
  */
-function Cloud( canvas, spritePos, containerWidth ) {
+function Cloud( canvas, spritePos, containerWidth , d  ) {
+  this.dir = d;
   this.canvas = canvas;
   this.canvasCtx = this.canvas.getContext( '2d' );
   this.spritePos = spritePos;
@@ -2075,12 +2112,18 @@ Cloud.prototype = {
   },
 
   /**
-   * Update the cloud position.
+   * Update the cloud position. 更新云的位置
    * @param {number} speed
    */
   update: function ( speed ) {
     if ( !this.remove ) {
-      this.xPos -= Math.ceil( speed );
+      if(this.dir){
+        this.xPos -= Math.ceil( speed );
+      }
+      else{
+        this.xPos += Math.ceil( speed );
+      }
+      
       this.draw();
 
       // Mark as removeable if no longer in the canvas.
@@ -2257,13 +2300,14 @@ NightMode.prototype = {
 //******************************************************************************
 
 /**
- * Horizon Line.
+ * Horizon Line. 地平线
  * Consists of two connecting lines. Randomly assigns a flat / bumpy horizon.
  * @param {HTMLCanvasElement} canvas
  * @param {Object} spritePos Horizon position in sprite.
  * @constructor
  */
-function HorizonLine( canvas, spritePos ) {
+function HorizonLine( canvas, spritePos, d) {
+  this.dir = d;
   this.spritePos = spritePos;
   this.canvas = canvas;
   this.canvasCtx = canvas.getContext( '2d' );
@@ -2352,7 +2396,7 @@ HorizonLine.prototype = {
 
     if ( this.xPos[ line1 ] <= -this.dimensions.WIDTH ) {
       this.xPos[ line1 ] += this.dimensions.WIDTH * 2;
-      this.xPos[ line2 ] = this.xPos[ line1 ] - this.dimensions.WIDTH;
+      this.xPos[ line2 ] = this.xPos[ line1 ] + this.dimensions.WIDTH;
       this.sourceXPos[ line1 ] = this.getRandomType() + this.spritePos.x;
     }
   },
@@ -2364,12 +2408,21 @@ HorizonLine.prototype = {
    */
   update: function ( deltaTime, speed ) {
     var increment = Math.floor( speed * (FPS / 1000) * deltaTime );
-
     if ( this.xPos[ 0 ] <= 0 ) {
       this.updateXPos( 0, increment );
-    } else {
-      this.updateXPos( 1, increment );
     }
+    else{
+      if(this.dir)
+        this.updateXPos( 1, increment );
+      else
+        this.updateXPos( 1, -increment );
+    }
+    
+    // if ( this.xPos[ 0 ] <= 0 ) {
+    //   this.updateXPos( 0, increment );
+    // } else {
+    //   this.updateXPos( 1, increment );
+    // }
     this.draw();
   },
 
@@ -2392,7 +2445,8 @@ HorizonLine.prototype = {
  * @param {number} gapCoefficient
  * @constructor
  */
-function Horizon( canvas, spritePos, dimensions, gapCoefficient ) {
+function Horizon( canvas, spritePos, dimensions, gapCoefficient, d ) {
+  this.dir = d;
   this.canvas = canvas;
   this.canvasCtx = this.canvas.getContext( '2d' );
   this.config = Horizon.config;
@@ -2404,7 +2458,6 @@ function Horizon( canvas, spritePos, dimensions, gapCoefficient ) {
   this.cloudFrequency = this.config.CLOUD_FREQUENCY;
   this.spritePos = spritePos;
   this.nightMode = null;
-
   // Cloud
   this.clouds = [];
   this.cloudSpeed = this.config.BG_CLOUD_SPEED;
@@ -2432,7 +2485,7 @@ Horizon.prototype = {
    */
   init: function () {
     this.addCloud();
-    this.horizonLine = new HorizonLine( this.canvas, this.spritePos.HORIZON );
+    this.horizonLine = new HorizonLine( this.canvas, this.spritePos.HORIZON, this.dir );
     this.nightMode = new NightMode( this.canvas, this.spritePos.MOON,
       this.dimensions.WIDTH );
   },
@@ -2448,7 +2501,10 @@ Horizon.prototype = {
   update: function ( deltaTime, currentSpeed, updateObstacles, showNightMode ) {
     this.runningTime += deltaTime;
     this.horizonLine.update( deltaTime, currentSpeed );
+    
+
     this.nightMode.update( showNightMode );
+    
     this.updateClouds( deltaTime, currentSpeed );
 
     if ( updateObstacles ) {
@@ -2457,7 +2513,7 @@ Horizon.prototype = {
   },
 
   /**
-   * Update the cloud positions.
+   * Update the cloud positions.  更新云的位置
    * @param {number} deltaTime
    * @param {number} currentSpeed
    */
@@ -2489,7 +2545,7 @@ Horizon.prototype = {
   },
 
   /**
-   * Update the obstacle positions.
+   * Update the obstacle positions.   仙人掌
    * @param {number} deltaTime
    * @param {number} currentSpeed
    */
@@ -2529,7 +2585,7 @@ Horizon.prototype = {
   },
 
   /**
-   * Add a new obstacle.
+   * Add a new obstacle.  创建信息路遇物
    * @param {number} currentSpeed
    */
   addNewObstacle: function ( currentSpeed ) {
@@ -2546,7 +2602,7 @@ Horizon.prototype = {
 
       this.obstacles.push( new Obstacle( this.canvasCtx, obstacleType,
         obstacleSpritePos, this.dimensions,
-        this.gapCoefficient, currentSpeed, obstacleType.width ) );
+        this.gapCoefficient, currentSpeed, this.dir, obstacleType.width ) );
 
       this.obstacleHistory.unshift( obstacleType.type );
 
@@ -2596,6 +2652,6 @@ Horizon.prototype = {
    */
   addCloud: function () {
     this.clouds.push( new Cloud( this.canvas, this.spritePos.CLOUD,
-      this.dimensions.WIDTH ) );
+      this.dimensions.WIDTH, this.dir ) );
   }
 };
